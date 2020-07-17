@@ -5,13 +5,13 @@
  * @modified: 3/24/19
  * @requires: SciLexer.dll
  * @see: https://www.scintilla.org/ScintillaDoc.html for information about the Scintilla Control
- */
+ { */
 Class Scintilla extends Scintilla.ScintillaBase {
     /**
      * Static variables - shared by all instances of the Scintilla class
      */
     Static controlCount := 0, dllPath := "Scintilla.dll", dllHwnd := 0
-	Static docList := Map(), currentDoc := 0
+    Static docList := Map(), currentDoc := 0
     
     /**
      * Instance variables
@@ -76,9 +76,7 @@ Class Scintilla extends Scintilla.ScintillaBase {
     
     __Delete() {
         Scintilla.controlCount--  ; decrement control counter
-        
-        ; If no more Scintilla controls present, then free the library
-        If (Scintilla.controlCount = 0) {
+        If (Scintilla.controlCount = 0) { ; If no more Scintilla controls present, then free the library
             DllCall("FreeLibrary", "Ptr", Scintilla.dllHwnd)
         }
     }
@@ -93,9 +91,9 @@ Class Scintilla extends Scintilla.ScintillaBase {
     */
     __sendEditor(msg := 0, wParam := 0, lParam := 0) {
         ; The fast way to control Scintilla
-		
-		; Debug.Msg("__sendEditor: " msg " / wParam: " (Type(wParam) = "Array" ? Jxon_Dump(wParam) : wParam) " / lParam: " (Type(lParam) = "Array" ? Jxon_dump(lParam) : lParam))
-		
+        
+        ; Debug.Msg("__sendEditor: " msg " / wParam: " (Type(wParam) = "Array" ? Jxon_Dump(wParam) : wParam) " / lParam: " (Type(lParam) = "Array" ? Jxon_dump(lParam) : lParam))
+        
         return DllCall(this.df            ; DIRECT FUNCTION
                       ,"UInt" , this.dp    ; DIRECT POINTER
                       ,"UInt" , msg
@@ -110,7 +108,8 @@ Class Scintilla extends Scintilla.ScintillaBase {
       * @param {lParam}: The lParam from WM_NOTIFY
       * @param {cb}: The user-defined function object which came from the consumer calling <instance>.OnNotify(notification, cb)
     */
-    __sciNotify(ctrl, lParam, cb) {
+    ; __sciNotify(ctrl, lParam, cb) {
+    __sciNotify(cb, notification, ctrl, lParam) {
         Static x64 := A_PtrSize == 8
         Static OffPosition := A_Ptrsize * 3
         Static OffCh := x64 ? 28 : 16
@@ -120,10 +119,18 @@ Class Scintilla extends Scintilla.ScintillaBase {
         Static OffLength := x64 ? 48 : 32
         Static OffLinesAdded := x64 ? 52 : 36
         Static OffLine := x64 ? 80 : 52
+        
+        Static OfffoldLevelNow := x64 ? 84 : 56 ; testing
+        Static OffFoldLevelPrev := x64 ? 88 : 60 ; testing
+        
         Static OffMargin := x64 ? 92 : 64
         Static OffListType := x64 ? 96 : 68
         Static OffX := x64 ? 100 : 72
         Static OffY := x64 ? 104 : 76
+        
+        Static OffTaken := x64 ? 108 : 76 ; testing
+        Static OffAnnotated := x64 ? 112 : 80 ; testing
+        
         Static OffUpdated := x64 ? 116 : 88
         
         this.IdFrom          := NumGet(lParam + A_Ptrsize * 1,"Ptr")
@@ -142,19 +149,21 @@ Class Scintilla extends Scintilla.ScintillaBase {
         ;this.maclParam       := NumGet(lParam + (x64 ? 72 : 48))
 
         this.Line            := NumGet(lParam + OffLine,"Int")
-        ;this.foldLevelNow    := NumGet(lParam + (x64 ? 84 : 56))
-        ;this.foldLevelPrev   := NumGet(lParam + (x64 ? 88 : 60))
+        
+        this.foldLevelNow    := NumGet(lParam + OfffoldLevelNow,"Int") ; testing
+        this.foldLevelPrev   := NumGet(lParam + OffFoldLevelPrev,"Int") ; testing
+        
         this.Margin          := NumGet(lParam + OffMargin,"Int")
         this.ListType        := NumGet(lParam + OffListType,"Int")
         this.X               := NumGet(lParam + OffX,"Int")
         this.Y               := NumGet(lParam + OffY,"Int")
 
-        ;this.token           := NumGet(lParam + (x64 ? 108 : 80))
-        ;this.annotLinesAdded := NumGet(lParam + (x64 ? 112 : 84))
+        this.token           := NumGet(lParam + OffTaken,"Int") ; testing
+        this.annotLinesAdded := NumGet(lParam + OffAnnotated,"Int") ; testing
+        
         this.Updated         := NumGet(lParam + OffUpdated,"Int")
-
-        ; Call user defined Notify function and passes object to it as last parameter
-        cb.call(ctrl, lParam)
+        
+        %cb%(this, lParam, notification) ; Call user defined Notify function and passes object to it as last parameter
     }
     
     /**
@@ -165,7 +174,12 @@ Class Scintilla extends Scintilla.ScintillaBase {
      * @param {cb}: A function object to be called.  It is passed the GuiControl instance and the lParam from the WM_NOTIFY message.
      */
     OnNotify(notification, cb) {
-        this.ctrl.OnNotify(notification, (ctrl, l) => this.__sciNotify(ctrl, l, cb))
+        If (IsFunc(cb)) {
+            sciNotify := ObjBindMethod(this,"__sciNotify",cb,notification)
+            ; this.ctrl.OnNotify(notification, (ctrl, lParam) => this.__sciNotify(ctrl, lParam, cb))
+            this.ctrl.OnNotify(notification,sciNotify)
+        } Else
+            MsgBox "Function does not exist:`r`n`r`n" cb "()"
     }
     
     /**
@@ -213,7 +227,12 @@ Class Scintilla extends Scintilla.ScintillaBase {
 
         ; Lexing SQL
         static SCE_SQL_DEFAULT := 0, SCE_SQL_COMMENT := 1, SCE_SQL_COMMENTLINE := 2, SCE_SQL_COMMENTDOC := 3, SCE_SQL_NUMBER := 4, SCE_SQL_WORD := 5, SCE_SQL_STRING := 6, SCE_SQL_CHARACTER := 7, SCE_SQL_SQLPLUS := 8, SCE_SQL_SQLPLUS_PROMPT := 9, SCE_SQL_OPERATOR := 10, SCE_SQL_IDENTIFIER := 11, SCE_SQL_SQLPLUS_COMMENT := 13, SCE_SQL_COMMENTLINEDOC := 15, SCE_SQL_WORD2 := 16, SCE_SQL_COMMENTDOCKEYWORD := 17, SCE_SQL_COMMENTDOCKEYWORDERROR := 18, SCE_SQL_USER1 := 19, SCE_SQL_USER2 := 20, SCE_SQL_USER3 := 21, SCE_SQL_USER4 := 22, SCE_SQL_QUOTEDIDENTIFIER := 23, SCE_SQL_QOPERATOR := 24
-
+        
+        ; More Lexing
+        static SCLEX_CONTAINER:=0, SC_IDLESTYLING_NONE:=0, SC_IDLESTYLING_TOVISIBLE:=1, SC_IDLESTYLING_AFTERVISIBLE:=2, SC_IDLESTYLING_ALL:=3
+        
+        static RED_STYLE := 1, ORANGE_STYLE := 2
+        
         ; Notifications
         static SCEN_CHANGE:=768,SCEN_SETFOCUS:=512,SCEN_KILLFOCUS:=256, SCN_STYLENEEDED:=2000,SCN_CHARADDED:=2001,SCN_SAVEPOINTREACHED:=2002,SCN_SAVEPOINTLEFT:=2003,SCN_MODIFYATTEMPTRO:=2004,SCN_DOUBLECLICK:=2006,SCN_UPDATEUI:=2007,SCN_MODIFIED:=2008,SCN_MACRORECORD:=2009,SCN_MARGINCLICK:=2010,SCN_NEEDSHOWN:=2011,SCN_PAINTED:=2013,SCN_USERLISTSELECTION:=2014,SCN_URIDROPPED:=2015,SCN_DWELLSTART:=2016,SCN_DWELLEND:=2017,SCN_ZOOM:=2018,SCN_HOTSPOTCLICK:=2019,SCN_HOTSPOTDOUBLECLICK:=2020,SCN_CALLTIPCLICK:=2021,SCN_AUTOCSELECTION:=2022, SCN_AUTOCCOMPLETED:=2030,SCN_AUTOCCANCELLED:=2025,SCN_FOCUSIN:=2028,SCN_FOCUSOUT:=2029
 
@@ -224,46 +243,46 @@ Class Scintilla extends Scintilla.ScintillaBase {
         static SC_WRAP_NONE:=0,SC_WRAP_WORD:=1,SC_WRAP_CHAR:=2,SC_WRAPVISUALFLAG_NONE:=0x0000,SC_WRAPVISUALFLAG_END:=0x0001,SC_WRAPVISUALFLAG_START:=0x0002,SC_WRAPVISUALFLAG_MARGIN:=0x0004, SC_WRAPVISUALFLAGLOC_DEFAULT:=0x0000,SC_WRAPVISUALFLAGLOC_END_BY_TEXT:=0x0001,SC_WRAPVISUALFLAGLOC_START_BY_TEXT:=0x0002,SC_CACHE_NONE:=0,SC_CACHE_CARET:=1,SC_CACHE_PAGE:=2,SC_CACHE_DOCUMENT:=3,EDGE_NONE:=0,EDGE_LINE:=1,EDGE_BACKGROUND:=2,SC_CURSORNORMAL:=-1,SC_CURSORWAIT:=4,VISIBLE_SLOP:=0x01,VISIBLE_STRICT:=0x04,CARET_SLOP:=0x01,CARET_STRICT:=0x04,CARET_JUMPS:=0x10,CARET_EVEN:=0x08,SC_SEL_STREAM:=0,SC_SEL_RECTANGLE:=1,SC_SEL_LINES:=2,SC_ALPHA_TRANSPARENT:=0,SC_ALPHA_OPAQUE:=255,SC_ALPHA_NOALPHA:=256,KEYWORDSET_MAX:=8
         static SC_MOD_INSERTTEXT:=0x1,SC_MOD_DELETETEXT:=0x2,SC_MOD_CHANGESTYLE:=0x4,SC_MOD_CHANGEFOLD:=0x8,SC_PERFORMED_USER:=0x10,SC_PERFORMED_UNDO:=0x20,SC_PERFORMED_REDO:=0x40,SC_MULTISTEPUNDOREDO:=0x80,SC_LASTSTEPINUNDOREDO:=0x100,SC_MOD_CHANGEMARKER:=0x200,SC_MOD_BEFOREINSERT:=0x400,SC_MOD_BEFOREDELETE:=0x800,SC_MULTILINEUNDOREDO:=0x1000,SC_MODEVENTMASKALL:=0x1FFF,SC_WEIGHT_NORMAL:=400, SC_WEIGHT_SEMIBOLD:=600, SC_WEIGHT_BOLD:=700
 
-		__Call(msg, p) { ; with __Call ... p is an array, no need for p*
-			If (msg = "__Init")
-				return
-			
-			wParam := p.Has(1) ? p[1] : 0
-			lParam := p.Has(2) ? p[2] : 0
-			newMsg := "SCI_" msg
-			
-			If (Type(lParam) = "array")
-				for i, v in lParam
-					Debug.Msg("lParam: " i " / " v)
-			
-			if (Type(msg) = "Integer") {
+        __Call(msg, p) { ; with __Call ... p is an array, no need for p*
+            If (msg = "__Init")
+                return
+            
+            wParam := p.Has(1) ? p[1] : 0
+            lParam := p.Has(2) ? p[2] : 0
+            newMsg := "SCI_" msg
+            
+            If (Type(lParam) = "array")
+                for i, v in lParam
+                    Debug.Msg("lParam: " i " / " v)
+            
+            if (Type(msg) = "Integer") {
                 throw Exception(this.__class "::" msg "`n`nPlease use the defined static variables on the " this.__class " instance for sending messages to the Scintilla control.`n`n`tFor example, <instance>.SetTabWidth(4)", -1)
             } else if (Type(msg) = "String" && !Scintilla.%newMsg%) { ; msg is a string but Scintilla.ScintillaBase does not have a key defined for "SCI_" msg
                 throw Exception(this.__class "::" msg "`n`nCall to non-existent method", -1)
             }
-			
+            
             If (wParam && Type(wParam) = "String" && !isObject(wParam)) {
-				wParamA := BufferAlloc(StrPut(wParam, "UTF-8"))
-				StrPut(wParam, wParamA.ptr, "UTF-8")
-				wParam := wParamA.ptr
+                wParamA := BufferAlloc(StrPut(wParam, "UTF-8"))
+                StrPut(wParam, wParamA.ptr, "UTF-8")
+                wParam := wParamA.ptr
             }
-			
-            If (p.Has(3)) {											; If the second parameter to any method call on Scintilla is a string and
-                lParamA := BufferAlloc(StrPut(lParam, "UTF-8"))		; you need to pass an address, then pass true/1 as the third parameter.
-                StrPut(lParam, lParamA.ptr, "UTF-8")				; This is the same as how the first parameter gets handled if its a string.
+            
+            If (p.Has(3)) {                                            ; If the second parameter to any method call on Scintilla is a string and
+                lParamA := BufferAlloc(StrPut(lParam, "UTF-8"))        ; you need to pass an address, then pass true/1 as the third parameter.
+                StrPut(lParam, lParamA.ptr, "UTF-8")                ; This is the same as how the first parameter gets handled if its a string.
                 lParam := lParamA.ptr
             }
 
             
             return this.__sendEditor(Scintilla.%newMsg%, wParam, lParam) ; pass the value of Scintilla.%newMsg% since we already verified it exists.
-		}
-		
-		__Get(key,p) {
-			if (!Scintilla.HasProp(key))
+        }
+        
+        __Get(key,p) {
+            if (!Scintilla.HasProp(key))
                 throw Exception(this.__class "::" key "`n`nUnknown property!", -1)
             
             return Scintilla.%key%
-		}
+        }
     }
 }
 

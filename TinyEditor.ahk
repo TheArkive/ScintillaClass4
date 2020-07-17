@@ -24,7 +24,9 @@ currentDoc++
 global sci := Scintilla.New(main, "w800 h400 xs Section vEdit", , 0, 0)
 sciDocs.push(sci.GetDocPointer()) ; store the initial doc pointer
 setupSciControl(sci)
-sci.OnNotify(sci.SCN_DOUBLECLICK, (ctrl, l) => showCurrentSelection(sci, l)) ; listen for double clicks and show the current selection if it contains text
+
+sci.OnNotify(sci.SCN_DOUBLECLICK, "showCurrentSelection") ; listen for events
+sci.OnNotify(sci.SCN_STYLENEEDED, "styleNeeded")
 
 sci.ctrl.GetPos(x,y,w,h), pos := {x:x, y:y, w:w, h:h}
 global sci2 := Scintilla.New(main, "yp xp+" (pos.w) // 2 " w0 h400 Hidden vEdit2", , 0, 0)
@@ -34,9 +36,71 @@ main.Show()
 
 return
 
+styleNeeded(sci, lParam, notifyCode) {
+    ; lastStyle := sci.GetEndStyled() ; example from: http://sphere.sourceforge.net/flik/docs/scintilla-container_lexer.html
+    ; lineCount := sci.GetLineCount()
+    ; curLine := sci.LineFromPosition(lastStyle)
+    ; startPos := sci.PositionFromLine(curLine)
+    ; endPos := sci.Position
+    ; lineLen := sci.LineLength(curLine)
+    
+    ; i := 0
+    ; if (lineLen > 0) {
+        ; firstChar := Chr(sci.GetCharAt(startPos))
+        
+        ; sci.StartStyling(startPos) ; important!
+        
+        ; Switch firstChar
+        ; {
+            ; case "-": sci.SetStyling(lineLen,sci.RED_STYLE)
+            ; case "/": sci.SetStyling(lineLen,sci.ORANGE_STYLE)
+        ; }
+        ; i++
+    ; }
+    
+    
+    
+    lastStyle := sci.GetEndStyled() ; my example, does thie full document
+    lineCount := sci.GetLineCount()
+    i := 0 ; this chunk works pretty fast
+    While (i <= lineCount) {
+        curLine := "X"
+        startPos := sci.PositionFromLine(i)
+        
+        lineLen := sci.LineLength(i)
+        endPos := startPos + lineLen - 1
+        
+        firstChar := Chr(sci.GetCharAt(startPos))
+        
+        sci.StartStyling(startPos) ; important!
+        
+        Switch firstChar
+        {
+            case "-": sci.SetStyling(lineLen,sci.RED_STYLE)
+            case "/": sci.SetStyling(lineLen,sci.ORANGE_STYLE)
+        }
+        i++
+    }
+}
+
 guiClose(g) {
 	DllCall("FreeLibrary", "Ptr", dllHwnd)
 	ExitApp
+}
+
+showCurrentSelection(sci, lParam, notifyCode) {
+	; debug.msg("cb: " cb)
+    if (trim(text := GetSelText(sci))) { ; if the selection just contains spaces, this will be false
+        ToolTip(text)
+        SetTimer(() => ToolTip(), -3000) ; close after 3 seconds
+    }
+}
+
+GetSelText(sci) { ; helper to get text from buffer
+    len := sci.GetSelText()
+    text := BufferAlloc(len)
+    sci.GetSelText(, text.ptr)
+    Return StrGet(Text.ptr, "UTF-8")
 }
 
 splitDoc(ctrl, p*) {
@@ -169,27 +233,14 @@ updateScrollWidth(sci) {
     sci.SetScrollWidth(pos.w - lineNumberWidth - SysGet(11)) ; Also subtract the width of a vertical scrollbar
 }
 
-showCurrentSelection(sci, l) {
-    if (trim(text := GetSelText(sci))) { ; if the selection just contains spaces, this will be false
-        ToolTip(text)
-        SetTimer(() => ToolTip(), -3000) ; close after 3 seconds
-    }
-}
-
-; helper to get text from buffer
-GetSelText(sci) {
-    len := sci.GetSelText()
-    text := BufferAlloc(len)
-    sci.GetSelText(, text.ptr)
-    Return StrGet(Text.ptr, "UTF-8")
-}
-
 setupSciControl(sci) {
     sci.SetBufferedDraw(0) ; Scintilla docs recommend turning this off for current systems as they perform window buffering
     sci.SetTechnology(1) ; uses Direct2D and DirectWrite APIs for higher quality
 
-    sci.SetLexer(7) ; SQL
     
+    
+	sci.SetWrapMode(1) ; wrap on word or style boundaries
+	
     ; Indentation
     sci.SetTabWidth(4)
     sci.SetUseTabs(false) ; Indent with spaces
@@ -197,11 +248,16 @@ setupSciControl(sci) {
     sci.SetBackspaceUnindents(1) ; Backspace will delete spaces that equal a tab
     sci.SetIndentationGuides(sci.SC_IV_LOOKBOTH)
     
+    sci.SetLexer(0) ; SCLEX_CONTAINER - custom styles
+    
     sci.StyleSetFont(sci.STYLE_DEFAULT, "Consolas", 1)
     sci.StyleSetSize(sci.STYLE_DEFAULT, 10)
     sci.StyleSetFore(sci.STYLE_DEFAULT, CvtClr(0xF8F8F2))
     sci.StyleSetBack(sci.STYLE_DEFAULT, CvtClr(0x272822))
     sci.StyleClearAll() ; This message sets all styles to have the same attributes as STYLE_DEFAULT.
+    
+    sci.StyleSetFore(sci.RED_STYLE,CvtClr(0xFF0000)) ; set text red - when i say so...
+    sci.StyleSetFore(sci.ORANGE_STYLE,CvtClr(0xFF6600)) ; set text orange...
 
     ; Active line background color
     sci.SetCaretLineBack(CvtClr(0x3E3D32))
@@ -216,18 +272,18 @@ setupSciControl(sci) {
     Sci.SetSelBack(1, CvtClr(0xBEC0BD))
     sci.SetSelAlpha(80)
 
-    sci.StyleSetFore(sci.SCE_SQL_COMMENT, CvtClr(0x75715E))
-    sci.StyleSetFore(sci.SCE_SQL_COMMENTLINE, CvtClr(0x75715E))
-    sci.StyleSetFore(sci.SCE_SQL_COMMENTDOC, CvtClr(0x75715E))
-    sci.StyleSetFore(sci.SCE_SQL_COMMENTDOCKEYWORD, CvtClr(0x66D9EF))
-    sci.StyleSetFore(sci.SCE_SQL_WORD, CvtClr(0xF92672))
-    sci.StyleSetFore(sci.SCE_SQL_NUMBER, CvtClr(0xAE81FF))
-    sci.StyleSetFore(sci.SCE_SQL_STRING, CvtClr(0xE6DB74))
-    sci.StyleSetFore(sci.SCE_SQL_OPERATOR, CvtClr(0xF92672))
-    sci.StyleSetFore(sci.SCE_SQL_USER1, CvtClr(0x66D9EF))
+    ; sci.StyleSetFore(sci.SCE_SQL_COMMENT, CvtClr(0x75715E))
+    ; sci.StyleSetFore(sci.SCE_SQL_COMMENTLINE, CvtClr(0x75715E))
+    ; sci.StyleSetFore(sci.SCE_SQL_COMMENTDOC, CvtClr(0x75715E))
+    ; sci.StyleSetFore(sci.SCE_SQL_COMMENTDOCKEYWORD, CvtClr(0x66D9EF))
+    ; sci.StyleSetFore(sci.SCE_SQL_WORD, CvtClr(0xF92672))
+    ; sci.StyleSetFore(sci.SCE_SQL_NUMBER, CvtClr(0xAE81FF))
+    ; sci.StyleSetFore(sci.SCE_SQL_STRING, CvtClr(0xE6DB74))
+    ; sci.StyleSetFore(sci.SCE_SQL_OPERATOR, CvtClr(0xF92672))
+    ; sci.StyleSetFore(sci.SCE_SQL_USER1, CvtClr(0x66D9EF))
 
-    sci.SetKeywords(0, keywords("keywords"), 1)
-    sci.SetKeywords(4, keywords("functions"), 1)
+    ; sci.SetKeywords(0, keywords("keywords"), 1)
+    ; sci.SetKeywords(4, keywords("functions"), 1)
 
     ; line number margin
     PixelWidth := sci.TextWidth(sci.STYLE_LINENUMBER, "9999", 1)
